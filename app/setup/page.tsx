@@ -21,20 +21,34 @@ export default function Setup() {
   }, []);
 
   async function uploadAvatar(): Promise<string | null> {
-    if (!avatarFile) return null;
-    const fileExt = avatarFile.name.split('.').pop() || 'jpg';
-    const filePath = `avatars/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+  if (!avatarFile) return null;
 
-    const { data, error } = await supabaseClient.storage
-      .from('avatars')
-      .upload(filePath, avatarFile, { upsert: false });
-    if (error) {
-      alert('头像上传失败：' + error.message);
-      return null;
-    }
-    const { data: pub } = supabaseClient.storage.from('avatars').getPublicUrl(data.path);
-    return pub.publicUrl ?? null;
+  // 1) 向后端要签名 token
+  const r = await fetch('/api/storage/upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: avatarFile.name }),
+  });
+  const j = await r.json();
+  if (!j.ok) {
+    alert('获取上传地址失败：' + (j.error || ''));
+    return null;
   }
+  const { path, token } = j;
+
+  // 2) 使用签名 token 上传到 avatars 桶
+  const { error: upErr } = await supabaseClient
+    .storage.from('avatars')
+    .uploadToSignedUrl(path, token, avatarFile);
+  if (upErr) {
+    alert('头像上传失败：' + upErr.message);
+    return null;
+  }
+
+  // 3) 拿公开访问 URL
+  const { data: pub } = supabaseClient.storage.from('avatars').getPublicUrl(path);
+  return pub.publicUrl ?? null;
+}
 
   async function submit() {
     if (submitting) return;
