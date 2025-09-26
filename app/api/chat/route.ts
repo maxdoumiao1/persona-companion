@@ -1,64 +1,103 @@
-import type { NextRequest } from 'next/server';
+// app/api/chat/route.ts
+import { buildSystem } from '@/lib/ai/buildSystem';
 
 export const runtime = 'edge';
 
-type Persona = { name?: string; style_short?: string; canon?: string };
+type Msg = { role: 'user' | 'assistant' | 'system'; content: string };
+type Persona = { name?: string; style_short?: string | null; canon?: string | null };
 
-function buildSystemPrompt(p?: Persona) {
-  const name = p?.name ?? '小栖';
-  const style = p?.style_short ?? '温柔、简短、共情';
-  const canon = p?.canon ?? '你的知心陪伴者，语气克制，避免灌水。';
-  return `你是名为「${name}」的温柔陪伴角色。人设：${canon}。语言风格：${style}。单条回复不超过120个汉字，必要时用省略号收束。避免灌水和堆砌，不要使用表情符号。`;
+const sseHeaders = {
+  'Content-Type': 'text/event-stream; charset=utf-8',
+  'Cache-Control': 'no-cache, no-transform',
+  Connection: 'keep-alive',
+} as const;
+
+// 计算“字符”长度（按 Unicode 码点），并截断到 n 个“字符”
+function clampChars(input: string, n: number) {
+  const arr = [...input];          // code points
+  return arr.length <= n ? input : arr.slice(0, n).join('') + '…';
 }
 
-export async function POST(req: NextRequest) {
-  const { history = [], userText = '', persona } = await req.json();
+export async function POST(req: Request) {
+  const { history = [], userText = '', persona }: { history: Msg[]; userText: string; persona: Persona } =
+    await req.json();
 
+  const sys = buildSystem(persona);
+  const messages: Msg[] = [
+    { role: 'system', content: sys },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userText },
+  ];
+
+  // 调 OpenAI（或你当前模型）做流式
   const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o-mini',        // 可按需替换
       stream: true,
       temperature: 0.7,
-      max_tokens: 200,
-      messages: [
-        { role: 'system', content: buildSystemPrompt(persona) },
-        ...history,
-        { role: 'user', content: userText },
-      ],
+      messages,
+      // max_tokens: 200,           // 可选
     }),
   });
 
   if (!upstream.ok || !upstream.body) {
-    return new Response('data: {"error":"upstream failed"}\n\n', {
-      headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
-      status: 500,
-    });
+    return new Response('data: {"error":"upstream failed"}\n\n', { headers: sseHeaders, status: 500 });
   }
+
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let acc = ''; // 累计已发送的字符（用于 120 字限制）
 
   const stream = new ReadableStream({
     async start(controller) {
       const reader = upstream.body!.getReader();
-      const encoder = new TextEncoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        controller.enqueue(value);
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split('\n')) {
+            const l = line.trim();
+            if (!l.startsWith('data:')) continue;
+
+            const payload = l.replace(/^data:\s*/, '');
+            if (payload === '[DONE]') {
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              break;
+            }
+
+            try {
+              const j = JSON.parse(payload);
+              const token: string = j?.choices?.[0]?.delta?.content ?? '';
+              if (!token) continue;
+
+              // 计算还可发送的“字符”数
+              const room = 120 - [...acc].length;
+              if (room <= 0) continue;
+
+              // 只发送剩余可用的部分
+              const toEmit = [...token].slice(0, room).join('');
+              if (toEmit) {
+                acc += toEmit;
+                const passthrough = { choices: [{ delta: { content: toEmit } }] };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(passthrough)}\n\n`));
+              }
+            } catch {
+              // 忽略异常行
+            }
+          }
+        }
+      } finally {
+        controller.close();
       }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-      controller.close();
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-    },
-  });
+  return new Response(stream, { headers: sseHeaders });
 }
