@@ -8,6 +8,14 @@ export default function ChatPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('你好');
   const [loading, setLoading] = useState(false);
+  const [persona, setPersona] = useState<Persona | null>(null);
+useEffect(() => {
+  try {
+    const p = localStorage.getItem('persona');
+    if (p) setPersona(JSON.parse(p));
+  } catch {}
+}, []);
+
   const listRef = useRef<HTMLDivElement>(null);
 
   async function send() {
