@@ -28,6 +28,7 @@ export default function ChatPage() {
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
+
     setInput('');
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setLoading(true);
@@ -46,21 +47,30 @@ export default function ChatPage() {
       if (!res.ok || !res.body) throw new Error('Network error');
 
       const reader = res.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = ''; // 缓存未解析完整的行
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          const l = line.trim();
-          if (!l.startsWith('data:')) continue;
-          const data = l.replace(/^data:\s*/, '');
+
+        // 关键：开启流式解码，避免把多字节中文拆断
+        buffer += decoder.decode(value, { stream: true });
+
+        // 只处理“完整行”，最后一行可能是不完整，留到下次
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line.startsWith('data:')) continue;
+
+          const data = line.slice(5).trim();
           if (data === '[DONE]') continue;
+
           try {
             const j = JSON.parse(data);
-            const token = j?.choices?.[0]?.delta?.content ?? '';
+            const token: string = j?.choices?.[0]?.delta?.content ?? '';
             if (token) {
               setMsgs((arr) => {
                 const copy = arr.slice();
@@ -69,9 +79,29 @@ export default function ChatPage() {
                 return copy;
               });
             }
-          } catch {}
+          } catch {
+            // 忽略偶发的半行/异常
+          }
         }
+
+        // 滚动到底
         listRef.current?.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+      }
+
+      // 结束后兜底处理一次剩余缓冲（一般为空）
+      if (buffer.startsWith('data:')) {
+        try {
+          const j = JSON.parse(buffer.slice(5).trim());
+          const token: string = j?.choices?.[0]?.delta?.content ?? '';
+          if (token) {
+            setMsgs((arr) => {
+              const copy = arr.slice();
+              const last = copy[copy.length - 1];
+              if (last && last.role === 'assistant') last.content += token;
+              return copy;
+            });
+          }
+        } catch {}
       }
     } catch {
       setMsgs((m) => [...m, { role: 'assistant', content: '抱歉，网络有点忙，请再试一次。' }]);
