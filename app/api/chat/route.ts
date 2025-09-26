@@ -2,14 +2,16 @@ import type { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
-function buildSystemPrompt(p?: { name?: string; style_short?: string; canon?: string }) {
-  const name = p?.name || '小栖';
-  const style = p?.style_short || '温柔、简短、共情';
-  const canon = p?.canon || '你的知心陪伴者，语气克制，避免灌水。';
+type Persona = { name?: string; style_short?: string; canon?: string };
+
+function buildSystemPrompt(p?: Persona) {
+  const name = p?.name ?? '小栖';
+  const style = p?.style_short ?? '温柔、简短、共情';
+  const canon = p?.canon ?? '你的知心陪伴者，语气克制，避免灌水。';
   return `你是名为「${name}」的温柔陪伴角色。人设：${canon}。语言风格：${style}。单条回复不超过120个汉字，必要时用省略号收束。避免灌水和堆砌，不要使用表情符号。`;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const { history = [], userText = '', persona } = await req.json();
 
   const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -30,12 +32,10 @@ export async function POST(req: Request) {
       ],
     }),
   });
-  // 下方逻辑保持不变…
-}
 
   if (!upstream.ok || !upstream.body) {
     return new Response('data: {"error":"upstream failed"}\n\n', {
-      headers: { 'Content-Type': 'text/event-stream' },
+      headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
       status: 500,
     });
   }
@@ -62,5 +62,3 @@ export async function POST(req: Request) {
     },
   });
 }
-
-
