@@ -33,6 +33,12 @@ useEffect(() => {
           history: msgs.map((x) => ({ role: x.role, content: x.content })),
           userText: text,
         }),
+        body: JSON.stringify({
+          history: msgs.map((x) => ({ role: x.role, content: x.content })),
+          userText: text,
+          persona
+        }),
+
       });
 
       if (!res.ok || !res.body) throw new Error('Network error');
