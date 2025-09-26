@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
+type Persona = { id: string; name: string; avatar_url?: string | null; style_short?: string | null; canon?: string | null };
 
 export default function ChatPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
