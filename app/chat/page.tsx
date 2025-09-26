@@ -1,22 +1,28 @@
 'use client';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
-type Persona = { id: string; name: string; avatar_url?: string | null; style_short?: string | null; canon?: string | null };
+type Persona = {
+  id?: string;
+  name?: string;
+  avatar_url?: string | null;
+  style_short?: string | null;
+  canon?: string | null;
+};
 
 export default function ChatPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('你好');
   const [loading, setLoading] = useState(false);
   const [persona, setPersona] = useState<Persona | null>(null);
-useEffect(() => {
-  try {
-    const p = localStorage.getItem('persona');
-    if (p) setPersona(JSON.parse(p));
-  } catch {}
-}, []);
-
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem('persona');
+      if (p) setPersona(JSON.parse(p));
+    } catch {}
+  }, []);
 
   async function send() {
     const text = input.trim();
@@ -32,13 +38,8 @@ useEffect(() => {
         body: JSON.stringify({
           history: msgs.map((x) => ({ role: x.role, content: x.content })),
           userText: text,
+          persona,
         }),
-        body: JSON.stringify({
-          history: msgs.map((x) => ({ role: x.role, content: x.content })),
-          userText: text,
-          persona
-        }),
-
       });
 
       if (!res.ok || !res.body) throw new Error('Network error');
@@ -81,6 +82,7 @@ useEffect(() => {
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 16 }}>
       <h1 style={{ fontSize: 20, marginBottom: 12 }}>角色陪伴 · 流式对话（MVP）</h1>
+
       <div
         ref={listRef}
         style={{
@@ -94,7 +96,7 @@ useEffect(() => {
       >
         {msgs.map((m, i) => (
           <div key={i} style={{ margin: '8px 0', whiteSpace: 'pre-wrap' }}>
-            <b>{m.role === 'user' ? '你' : (persona?.name || '小栖')}</b>
+            <b>{m.role === 'user' ? '你' : persona?.name || '小栖'}</b>
             <div>{m.content}</div>
           </div>
         ))}
@@ -117,4 +119,3 @@ useEffect(() => {
     </div>
   );
 }
-
