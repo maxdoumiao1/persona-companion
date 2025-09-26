@@ -1,3 +1,4 @@
+// app/chat/page.tsx
 'use client';
 import React, { useRef, useState, useEffect } from 'react';
 
@@ -81,7 +82,20 @@ export default function ChatPage() {
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 16 }}>
-      <h1 style={{ fontSize: 20, marginBottom: 12 }}>角色陪伴 · 流式对话（MVP）</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        {persona?.avatar_url ? (
+          <img
+            src={persona.avatar_url}
+            alt={persona?.name || '头像'}
+            width={40}
+            height={40}
+            style={{ borderRadius: '50%', objectFit: 'cover' }}
+          />
+        ) : null}
+        <h1 style={{ fontSize: 20 }}>
+          角色陪伴 · 流式对话（MVP）{persona?.name ? ` — ${persona.name}` : ''}
+        </h1>
+      </div>
 
       <div
         ref={listRef}
@@ -111,8 +125,11 @@ export default function ChatPage() {
           placeholder="说点什么…"
           style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid #ddd' }}
         />
-        <button onClick={send} disabled={loading}
-          style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd' }}>
+        <button
+          onClick={send}
+          disabled={loading}
+          style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd' }}
+        >
           发送
         </button>
       </div>
