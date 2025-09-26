@@ -94,7 +94,7 @@ useEffect(() => {
       >
         {msgs.map((m, i) => (
           <div key={i} style={{ margin: '8px 0', whiteSpace: 'pre-wrap' }}>
-            <b>{m.role === 'user' ? '你' : '小栖'}</b>
+            <b>{m.role === 'user' ? '你' : (persona?.name || '小栖')}</b>
             <div>{m.content}</div>
           </div>
         ))}
